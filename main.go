@@ -11,6 +11,8 @@ import (
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/golang/protobuf/ptypes/duration"
+	"google.golang.org/protobuf/types/known/durationpb"
 	corev1 "k8s.io/api/core/v1"
 	k8s_types "k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
@@ -76,6 +78,13 @@ func main() {
 				var clusters []types.Resource
 				var routes []*route.Route
 				for _, s := range all {
+					// get the annotation from service
+					var timeout *duration.Duration
+					if timeoutAnnotation, ok := s.Annotation["mesh-timeout"]; ok {
+						if duration, err := time.ParseDuration(timeoutAnnotation); err == nil {
+							timeout = &durationpb.Duration{Seconds: int64(duration.Seconds())}
+						}
+					}
 					routes = append(routes, &route.Route{
 						Name: s.Name,
 						Match: &route.RouteMatch{
@@ -100,6 +109,7 @@ func main() {
 								ClusterSpecifier: &route.RouteAction_Cluster{
 									Cluster: s.Name,
 								},
+								Timeout: timeout,
 							},
 						},
 					})

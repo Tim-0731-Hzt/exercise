@@ -28,3 +28,34 @@
      * Change the targetPort of service app-3 to 9090, same as the fake-service containerPort. When the traffic comes into the service, forward it to the fake-service directly will also work
 * We seem to be updating the config map too often on Kubernetes, can you fix this?
 * Add the ability to add an annotation to a service 'mesh-timeout: 2s' which will apply a timeout to requests on the server side (only the service affected should have its configuration modified)
+  ```yaml
+    apiVersion: v1
+    kind: Service
+    metadata:
+      annotations:
+        "mesh-timeout": 2s
+      name: app-3
+      labels:
+      meshed: enabled
+    ```
+```shell
+  root@foo kubectl exec -it deployment/app-3 -c netshoot  -- curl -v http://127.0.0.1:8081/config_dump
+  {
+          "match": {
+           "prefix": "/",
+           "headers": [
+            {
+             "name": "service",
+             "string_match": {
+              "exact": "app-3"
+             }
+            }
+           ]
+          },
+          "route": {
+           "cluster": "app-3",
+           "timeout": "2s"
+          },
+          "name": "app-3"
+  }
+```

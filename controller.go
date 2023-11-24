@@ -82,9 +82,10 @@ type MeshConfReconciler struct {
 }
 
 type ServiceMeta struct {
-	Name string `json:"name"`
-	Ip   string `json:"ip"`
-	Port int32  `json:"port"`
+	Name       string `json:"name"`
+	Ip         string `json:"ip"`
+	Port       int32  `json:"port"`
+	Annotation map[string]string
 }
 
 func (a *MeshConfReconciler) Reconcile(ctx context.Context, req reconcile.Request) (reconcile.Result, error) {
@@ -103,9 +104,10 @@ func (a *MeshConfReconciler) Reconcile(ctx context.Context, req reconcile.Reques
 			continue
 		}
 		srvs = append(srvs, ServiceMeta{
-			Name: s.Name,
-			Ip:   s.Spec.ClusterIP,
-			Port: s.Spec.Ports[0].Port,
+			Name:       s.Name,
+			Ip:         s.Spec.ClusterIP,
+			Port:       s.Spec.Ports[0].Port,
+			Annotation: s.Annotations,
 		})
 	}
 	sort.SliceStable(srvs, func(i, j int) bool {
