@@ -27,6 +27,14 @@
      ```
      * Change the targetPort of service app-3 to 9090, same as the fake-service containerPort. When the traffic comes into the service, forward it to the fake-service directly will also work
 * We seem to be updating the config map too often on Kubernetes, can you fix this?
+    * Possible reasons we want to fix this:
+      * After we edit the config map, we need to do `kubectl rollout restart deployment`, this operation will terminate the old pod, and start a new pod. 
+        1. It might cause the application unstable if the pod is restarted too often
+        2. It might cause negative influence on the performance of the application if the application need some warm-up after each restart
+        3. It might cause temporarily cpu and memory consumption, as the scheduler need to terminate the old one, and start a new one.
+    * Solutions:
+      * To update the configmap less frequently, we could use service annotation to enable this `kubectl annotate service app1`. If we want to apply any changes to the envoy bootstrap config, we add an annotation for that. As there is a control plane keep watching the services, any changes on the services could be apply to the data plane via XDS.
+      * Besides annotation, we could also use CRDs to apply network policy, the control plane could watch the changes to CRDs, and apply it to envoy.
 * Add the ability to add an annotation to a service 'mesh-timeout: 2s' which will apply a timeout to requests on the server side (only the service affected should have its configuration modified)
   ```yaml
     apiVersion: v1
