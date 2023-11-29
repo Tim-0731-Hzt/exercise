@@ -3,6 +3,7 @@ kind: Service
 metadata:
   annotations:
     "mesh-timeout": 2s
+    "listener-port": 1004
   name: app-3
   labels:
     meshed: enabled

@@ -6,18 +6,24 @@ import (
 	clusterv3 "github.com/envoyproxy/go-control-plane/envoy/config/cluster/v3"
 	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	endpointv3 "github.com/envoyproxy/go-control-plane/envoy/config/endpoint/v3"
+	listenerV3 "github.com/envoyproxy/go-control-plane/envoy/config/listener/v3"
 	route "github.com/envoyproxy/go-control-plane/envoy/config/route/v3"
+	http_connection_manager "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/network/http_connection_manager/v3"
 	matcherv3 "github.com/envoyproxy/go-control-plane/envoy/type/matcher/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/types"
 	"github.com/envoyproxy/go-control-plane/pkg/cache/v3"
 	"github.com/envoyproxy/go-control-plane/pkg/resource/v3"
+	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes"
 	"github.com/golang/protobuf/ptypes/duration"
+	"google.golang.org/protobuf/types/known/anypb"
 	"google.golang.org/protobuf/types/known/durationpb"
 	corev1 "k8s.io/api/core/v1"
 	k8s_types "k8s.io/apimachinery/pkg/types"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -77,12 +83,48 @@ func main() {
 				}
 				var clusters []types.Resource
 				var routes []*route.Route
+				var listener []types.Resource
 				for _, s := range all {
 					// get the annotation from service
 					var timeout *duration.Duration
 					if timeoutAnnotation, ok := s.Annotation["mesh-timeout"]; ok {
 						if duration, err := time.ParseDuration(timeoutAnnotation); err == nil {
 							timeout = &durationpb.Duration{Seconds: int64(duration.Seconds())}
+						}
+					}
+					if listenerPort, ok := s.Annotation["listener-port"]; ok {
+						port, err := strconv.Atoi(listenerPort)
+						if err != nil {
+							logf.Log.Error(err, "invalid port value")
+						} else {
+							filterChain := &listenerV3.FilterChain{
+								Name: "random-filter-chain",
+								Filters: []*listenerV3.Filter{
+									{
+										Name: "envoy.filters.network.http_connection_manager",
+										ConfigType: &listenerV3.Filter_TypedConfig{
+											TypedConfig: marshalAny(&http_connection_manager.HttpConnectionManager{
+												StatPrefix: "inbound",
+											}),
+										},
+									},
+								},
+							}
+							listener = append(listener, &listenerV3.Listener{
+								Name: s.Name,
+								Address: &corev3.Address{
+									Address: &corev3.Address_SocketAddress{
+										SocketAddress: &corev3.SocketAddress{
+											Protocol: corev3.SocketAddress_TCP,
+											Address:  "0.0.0.0",
+											PortSpecifier: &corev3.SocketAddress_PortValue{
+												PortValue: uint32(port),
+											},
+										},
+									},
+								},
+								FilterChains: []*listenerV3.FilterChain{filterChain},
+							})
 						}
 					}
 					routes = append(routes, &route.Route{
@@ -144,7 +186,7 @@ func main() {
 				}
 
 				snap, err := cache.NewSnapshot(time.Now().String(), map[resource.Type][]types.Resource{
-					resource.ListenerType: {},
+					resource.ListenerType: listener,
 					resource.ClusterType:  clusters,
 					resource.EndpointType: {},
 					resource.RouteType: {
@@ -173,4 +215,12 @@ func main() {
 
 	<-ctx.Done()
 	wg.Wait()
+}
+
+func marshalAny(pb proto.Message) *anypb.Any {
+	any, err := ptypes.MarshalAny(pb)
+	if err != nil {
+		logf.Log.Error(err, "failed marshal")
+	}
+	return any
 }
